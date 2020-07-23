@@ -1,4 +1,4 @@
-// LEVEL4 : Use of email and password for authenticate with hashing using bcrypt
+// LEVEL3 : Use of email and password for authenticate with hashing using MD5
 
 //jshint esversion:6
 
@@ -9,10 +9,8 @@ const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
 const md5 = require("md5");
-const bcrypt=require("bcrypt");
 
 const app = express();
-const saltRounds = 10;
 
 // Include EJS
 app.set('view engine', 'ejs');
@@ -59,22 +57,19 @@ app.get("/register", function(req, res) {
 });
 
 app.post("/register", function(req, res) {
+  // Record email (username in EJS) and password (password in EJS) of the new user
+  const newUser = new User({
+    email: req.body.username,
+    password: md5(req.body.password)
+  });
 
-  bcrypt.hash(req.body.password, saltRounds, function(err, hash) {
-    // Record email (username in EJS) and password (password in EJS) of the new user
-    const newUser = new User({
-      email: req.body.username,
-      password: hash
-    });
-
-    // Save newUser in database. Display secret page if registration succeeds
-    newUser.save(function(err){
-      if (err) {
-        console.log(err);
-      } else {
-        res.render("secrets"); // Only if user has been successfully registered
-      }
-    });
+  // Save newUser in database. Display secret page if registration succeeds
+  newUser.save(function(err){
+    if (err) {
+      console.log(err);
+    } else {
+      res.render("secrets"); // Only if user has been successfully registered
+    }
   });
 });
 
@@ -84,15 +79,12 @@ app.post("/login", function(req, res) {
     function(err, foundUser){
 
       if ((!err) && (foundUser)) {
-        // Load hash from your password DB.
-        bcrypt.compare(req.body.password, foundUser.password, function(err, result) {
-          if (result == true) {
-            res.render("secrets"); // Only if user has been found in database
-          } else {
-            console.log("Mail and password mismatch");
-            res.redirect("/");
-          }
-        });
+        if (foundUser.password === md5(req.body.password)) {
+          res.render("secrets"); // Only if user has been found in database
+        } else {
+          console.log("Mail and password mismatch");
+          res.redirect("/");
+        }
       } else {
         console.log("ERROR: " + err);
         res.redirect("/");
