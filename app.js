@@ -1,4 +1,4 @@
-// LEVEL4 : Use of email and password for authenticate with hashing using bcrypt
+// LEVEL5 : Use of email and password for authenticate with passport.js
 
 //jshint esversion:6
 
@@ -8,11 +8,12 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
-const md5 = require("md5");
-const bcrypt=require("bcrypt");
+const session = require("express-session");
+const passport = require("passport");
+const passportLocalMongoose = require("passport-local-mongoose");
+
 
 const app = express();
-const saltRounds = 10;
 
 // Include EJS
 app.set('view engine', 'ejs');
@@ -25,6 +26,15 @@ app.use(bodyParser.urlencoded({
 // Need to deliver static files (for css, images and javascripts)
 app.use(express.static("public"));
 
+// Configure express-session and passport
+app.use(session({
+  secret: "a long sentence to protect our project credentials",
+  resave: false,
+  saveUninitialized: false,
+}));
+app.use(passport.initialize());
+app.use(passport.session());
+
 // Create and connect to DB, create schema and create model
 mongoose.connect("mongodb://localhost:27017/userDB", {
 // mongoose.connect("mongodb+srv://admin-cly:annecy74@cluster0.dkgq4.mongodb.net/<database>?retryWrites=true&w=majority", {
@@ -32,9 +42,10 @@ mongoose.connect("mongodb://localhost:27017/userDB", {
   useUnifiedTopology: true
 });
 mongoose.set('useFindAndModify', false);
+mongoose.set('useCreateIndex', true);
 
 const userSchema = new mongoose.Schema({
-  email: {
+  username: {
     type: String,
     required: true,
   },
@@ -43,8 +54,14 @@ const userSchema = new mongoose.Schema({
   }
 });
 
-// Activate database
+// Activate database with passport.js
+userSchema.plugin(passportLocalMongoose);
 const User = mongoose.model("User", userSchema);
+
+passport.use(User.createStrategy());
+passport.serializeUser(User.serializeUser());
+passport.deserializeUser(User.deserializeUser());
+
 
 app.get("/", function(req, res) {
   res.render("home");
@@ -58,45 +75,56 @@ app.get("/register", function(req, res) {
   res.render("register");
 });
 
+app.get("/secrets", function(req, res) {
+  // Check if user has been authenticated to authorize access
+  if (req.isAuthenticated()) {
+    res.render("secrets");
+  } else {
+    res.redirect("/login");
+  }
+});
+
+app.get("/logout", function(req, res) {
+  req.logout();
+  res.redirect("/");
+});
+
+
+
 app.post("/register", function(req, res) {
 
-  bcrypt.hash(req.body.password, saltRounds, function(err, hash) {
-    // Record email (username in EJS) and password (password in EJS) of the new user
-    const newUser = new User({
-      email: req.body.username,
-      password: hash
-    });
-
-    // Save newUser in database. Display secret page if registration succeeds
-    newUser.save(function(err){
-      if (err) {
-        console.log(err);
-      } else {
-        res.render("secrets"); // Only if user has been successfully registered
-      }
-    });
+  User.register({username: req.body.username}, req.body.password, function(err, user) {
+    if (err) {
+      console.log(err);
+      res.redirect("/register");
+    } else {
+      console.log("User is accepted: " + user);
+      passport.authenticate("local")(req, res, function(){
+        // If authentication is ok, redirect to /secrets route
+        res.redirect("/secrets");
+      });
+    }
   });
 });
 
 app.post("/login", function(req, res) {
-  // Check if username / password match from database
-  User.findOne({ email: req.body.username },
-    function(err, foundUser){
 
-      if ((!err) && (foundUser)) {
-        // Load hash from your password DB.
-        bcrypt.compare(req.body.password, foundUser.password, function(err, result) {
-          if (result == true) {
-            res.render("secrets"); // Only if user has been found in database
-          } else {
-            console.log("Mail and password mismatch");
-            res.redirect("/");
-          }
-        });
-      } else {
-        console.log("ERROR: " + err);
-        res.redirect("/");
-      }
+  const user = new User({
+    username: req.body.username,
+    password: req.body.password
+  });
+
+  // Use passport to log in user
+  req.login(user, function(err){
+    if (err) {
+      console.log("Log in refused: " + err);
+    } else {
+      // Authenticate the user
+      passport.authenticate("local")(req, res, function(){
+        // If authentication is ok, redirect to /secrets route
+        res.redirect("/secrets");
+      });
+    }
   });
 });
 
