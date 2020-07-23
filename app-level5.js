@@ -1,4 +1,4 @@
-// LEVEL6 : Use of email and password for authenticate with OAuth 2.0 and 3rd party authentication (using Google)
+// LEVEL5 : Use of email and password for authenticate with passport.js
 
 //jshint esversion:6
 
@@ -11,8 +11,7 @@ const mongoose = require("mongoose");
 const session = require("express-session");
 const passport = require("passport");
 const passportLocalMongoose = require("passport-local-mongoose");
-const GoogleStrategy = require('passport-google-oauth20').Strategy;
-const findOrCreate = require("mongoose-findorcreate");
+
 
 const app = express();
 
@@ -48,66 +47,25 @@ mongoose.set('useCreateIndex', true);
 const userSchema = new mongoose.Schema({
   username: {
     type: String,
+    required: true,
   },
   password: {
-    type: String
-  },
-  googleId: {
-    type: String
-  },
-  secret: {
     type: String
   }
 });
 
 // Activate database with passport.js
 userSchema.plugin(passportLocalMongoose);
-userSchema.plugin(findOrCreate);
-
 const User = mongoose.model("User", userSchema);
 
 passport.use(User.createStrategy());
-
-passport.serializeUser(function(user, done) {
-  done(null, user.id);
-});
-
-passport.deserializeUser(function(id, done) {
-  User.findById(id, function(err, user) {
-    done(err, user);
-  });
-});
-
-passport.use(new GoogleStrategy({
-    clientID: process.env.CLIENT_ID,
-    clientSecret: process.env.CLIENT_SECRET,
-    callbackURL: "http://localhost:3000/auth/google/secrets"
-  },
-  function(accessToken, refreshToken, profile, cb) {
-    console.log(profile);
-
-    User.findOrCreate({ googleId: profile.id }, function (err, user) {
-      return cb(err, user);
-    });
-  }
-));
+passport.serializeUser(User.serializeUser());
+passport.deserializeUser(User.deserializeUser());
 
 
 app.get("/", function(req, res) {
   res.render("home");
 });
-
-app.get('/auth/google',
-  passport.authenticate("google", { scope: ['profile'] })
-);
-
-app.get("/auth/google/secrets",
-  passport.authenticate('google', { failureRedirect: "/login" }),
-  function(req, res) {
-    // Successful authentication, redirect home.
-    res.redirect("/secrets");
-  });
-
 
 app.get("/login", function(req, res) {
   res.render("login");
@@ -118,20 +76,9 @@ app.get("/register", function(req, res) {
 });
 
 app.get("/secrets", function(req, res) {
-  // Find all secrets from DB
-  User.find({"secret": {$ne:null}}, function(err, foundUsers){
-    if (err) {
-      console.log(err);
-    } else {
-      res.render("secrets", {userWithSecrets: foundUsers});
-    }
-  });
-});
-
-app.get("/submit", function(req, res) {
   // Check if user has been authenticated to authorize access
   if (req.isAuthenticated()) {
-    res.render("submit");
+    res.render("secrets");
   } else {
     res.redirect("/login");
   }
@@ -178,27 +125,6 @@ app.post("/login", function(req, res) {
         res.redirect("/secrets");
       });
     }
-  });
-});
-
-app.post("/submit", function(req, res) {
-
-  // Save secret
-  const submittedSecret = req.body.secret;
-
-  console.log(req.user.id);
-  User.findById(req.user.id, function(err, foundUser) {
-    if (err) {
-      console.log(err);
-    } else {
-      if (foundUser) {
-        foundUser.secret = submittedSecret;
-        foundUser.save(function(){
-          res.redirect("/secrets");
-        });
-      }
-    }
-
   });
 });
 
