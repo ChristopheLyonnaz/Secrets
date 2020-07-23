@@ -1,4 +1,4 @@
-// LEVEL3 : Use of email and password for authenticate with encryption, with hased password
+// LEVEL3 : Use of email and password for authenticate with hashing using MD5
 
 //jshint esversion:6
 
@@ -8,7 +8,7 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
-const encrypt = require("mongoose-encryption");
+const md5 = require("md5");
 
 const app = express();
 
@@ -41,9 +41,7 @@ const userSchema = new mongoose.Schema({
   }
 });
 
-// Activate database encryption for password entries only with a secret key
-userSchema.plugin(encrypt, { secret: process.env.SECRET, encryptedFields: ["password"] });
-
+// Activate database
 const User = mongoose.model("User", userSchema);
 
 app.get("/", function(req, res) {
@@ -62,7 +60,7 @@ app.post("/register", function(req, res) {
   // Record email (username in EJS) and password (password in EJS) of the new user
   const newUser = new User({
     email: req.body.username,
-    password: req.body.password
+    password: md5(req.body.password)
   });
 
   // Save newUser in database. Display secret page if registration succeeds
@@ -79,11 +77,16 @@ app.post("/login", function(req, res) {
   // Check if username / password match from database
   User.findOne({ email: req.body.username },
     function(err, foundUser){
-      console.log(foundUser);
-      if ((!err) && (foundUser) && (foundUser.password === req.body.password)) {
-        res.render("secrets"); // Only if user has been found in database
+
+      if ((!err) && (foundUser)) {
+        if (foundUser.password === md5(req.body.password)) {
+          res.render("secrets"); // Only if user has been found in database
+        } else {
+          console.log("Mail and password mismatch");
+          res.redirect("/");
+        }
       } else {
-        console.log(err);
+        console.log("ERROR: " + err);
         res.redirect("/");
       }
   });
